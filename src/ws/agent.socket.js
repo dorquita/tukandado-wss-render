@@ -1,5 +1,4 @@
 import { WebSocketServer } from 'ws'
-import { env } from '../config/env.js'
 import { agentRegistry } from './agent.registry.js'
 import { pendingRequests } from './pending-requests.js'
 import { AppError } from '../utils/app-error.js'
@@ -23,14 +22,6 @@ export function registerAgentSocket(server) {
       return
     }
 
-    const token = url.searchParams.get('token')
-
-    if (!token || token !== env.agentToken) {
-      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
-      socket.destroy()
-      return
-    }
-
     wss.handleUpgrade(request, socket, head, (ws) => {
       wss.emit('connection', ws, request)
     })
@@ -41,8 +32,7 @@ export function registerAgentSocket(server) {
       const previous = agentRegistry.getAgent()
       try {
         previous?.socket?.close()
-      } catch {
-      }
+      } catch {}
     }
 
     agentRegistry.setAgent(ws, {
