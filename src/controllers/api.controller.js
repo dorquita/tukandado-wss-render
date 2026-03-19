@@ -1,5 +1,6 @@
 import { commandService } from '../services/command.service.js'
 import { AppError } from '../utils/app-error.js'
+import { sendCommandToAgent } from '../ws/agent-command.service.js'
 
 export class ApiController {
   static async scanDevices(req, res) {
