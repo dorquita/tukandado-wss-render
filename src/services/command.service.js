@@ -56,10 +56,26 @@ export class CommandService {
     return await this.sendCommand('scan_devices', {})
   }
 
-  async openCloseDevice({ action, deviceId }) {
-    return await this.sendCommand('open_close_device', {
-      action,
-      deviceId
+  async openTechnicalLock({ mac, pairPwd, deviceId, clubId, unlockMode = 'toggle', timeout = 6 }) {
+    if (!mac) {
+      throw new AppError('mac es requerida', 400)
+    }
+
+    if (!pairPwd) {
+      throw new AppError('pairPwd es requerida', 400)
+    }
+
+    if (!deviceId) {
+      throw new AppError('deviceId es requerido', 400)
+    }
+
+    return await this.sendCommand('kerong_unlock', {
+      mac,
+      pairPwd,
+      deviceId,
+      clubId,
+      unlockMode,
+      timeout
     })
   }
 }

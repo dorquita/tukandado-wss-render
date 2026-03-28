@@ -12,23 +12,50 @@ export class ApiController {
     })
   }
 
-  static async openCloseDevice(req, res) {
-    const { action, deviceId } = req.body ?? {}
+  static async openCloseDevice(req, res, next) {
+    try {
+      const {
+        mac,
+        pairPwd,
+        deviceId,
+        clubId,
+        unlockMode = 'toggle',
+        timeout = 6
+      } = req.body ?? {}
 
-    if (!action || !['open', 'close'].includes(action)) {
-      throw new AppError('action must be "open" or "close"', 400)
+      if (!mac || typeof mac !== 'string') {
+        throw new AppError('mac es requerida', 400)
+      }
+
+      if (!pairPwd || typeof pairPwd !== 'string') {
+        throw new AppError('pairPwd es requerida', 400)
+      }
+
+      if (!deviceId || typeof deviceId !== 'string') {
+        throw new AppError('deviceId es requerido', 400)
+      }
+
+      if (!['toggle', 'relock5s'].includes(unlockMode)) {
+        throw new AppError('unlockMode must be "toggle" or "relock5s"', 400)
+      }
+
+      const result = await commandService.openTechnicalLock({
+        mac,
+        pairPwd,
+        deviceId,
+        clubId,
+        unlockMode,
+        timeout
+      })
+
+      return res.status(200).json({
+        success: true,
+        message: 'Apertura ejecutada correctamente',
+        data: result
+      })
+    } catch (error) {
+      next(error)
     }
-
-    if (!deviceId || typeof deviceId !== 'string') {
-      throw new AppError('deviceId is required', 400)
-    }
-
-    const result = await commandService.openCloseDevice({ action, deviceId })
-
-    res.status(200).json({
-      success: true,
-      data: result
-    })
   }
 
   static async scanLocks(req, res, next) {
