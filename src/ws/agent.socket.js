@@ -49,7 +49,7 @@ export function registerAgentSocket(server) {
       }
 
       if (message.type === "command_result") {
-        const { requestId, success, result, error } = message;
+        const { requestId, data, error } = message;
         const pending = pendingRequests.get(requestId);
 
         if (!pending) {
@@ -58,17 +58,20 @@ export function registerAgentSocket(server) {
 
         pendingRequests.delete(requestId);
 
-        if (success) {
-          pending.resolve(result ?? {});
-        } else {
+        if (error) {
           pending.reject(
             new AppError(
-              error?.message || "Raspberry execution failed",
+              typeof error === "string"
+                ? error
+                : error?.message || "Raspberry execution failed",
               502,
-              error ?? null,
+              typeof error === "string" ? { message: error } : error ?? null,
             ),
           );
+          return;
         }
+
+        pending.resolve(data ?? {});
       }
     });
 
