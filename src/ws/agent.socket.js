@@ -14,7 +14,7 @@ function safeJsonParse(raw) {
 
 async function authenticateAgentWithBackend({ deviceId, deviceSecret }) {
   const response = await axios.post(
-    `${process.env.BACKEND_URL}/api/kiosk-devices/activate`,
+    `${process.env.BACKEND_URL}/api/kiosk/device-activate`,
     {
       deviceId,
       deviceSecret,
