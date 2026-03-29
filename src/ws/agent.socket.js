@@ -25,22 +25,17 @@ export async function authenticateAgentWithBackend({ deviceId, deviceSecret }) {
       { timeout: 10000 }
     );
 
-    // 🔍 Logs útiles
     console.log("HTTP Status:", response.status);
-    console.log("✅ Response backend:", response.data);
 
     const body = response.data;
 
-    // ✅ CAMBIO CLAVE: usar `ok` en lugar de `success`
     if (!body?.ok) {
       throw new Error(
         `Backend respondió ok=false: ${body?.message || "Sin mensaje"}`
       );
     }
 
-    // 👉 Devuelves directamente los datos útiles
     return body.data;
-
   } catch (error) {
     const status = error?.response?.status;
     const data = error?.response?.data;
@@ -52,9 +47,7 @@ export async function authenticateAgentWithBackend({ deviceId, deviceSecret }) {
     console.error("Error message:", message);
 
     throw new Error(
-      `Auth fallida (${status || "NO_STATUS"}): ${
-        data?.message || message
-      }`
+      `Auth fallida (${status || "NO_STATUS"}): ${data?.message || message}`
     );
   }
 }
@@ -80,12 +73,21 @@ export function registerAgentSocket(server) {
     let currentDeviceId = null;
 
     ws.on("message", async (rawMessage) => {
-      console.log("Mensaje recibido del agente:", rawMessage.toString());
-
-      const message = safeJsonParse(rawMessage.toString());
+      const rawText = rawMessage.toString();
+      const message = safeJsonParse(rawText);
 
       if (!message) {
+        console.warn("⚠️ Mensaje no JSON del agente");
         return;
+      }
+
+      if (message.type === "agent_hello") {
+        console.log("📩 Agent hello recibido:", {
+          type: message.type,
+          deviceId: message.deviceId,
+        });
+      } else {
+        console.log("📩 Mensaje recibido del agente:", message.type);
       }
 
       try {
@@ -97,7 +99,7 @@ export function registerAgentSocket(server) {
               JSON.stringify({
                 type: "auth_error",
                 message: "Faltan deviceId o deviceSecret",
-              }),
+              })
             );
             ws.close(4000, "Missing credentials");
             return;
@@ -107,6 +109,8 @@ export function registerAgentSocket(server) {
             deviceId,
             deviceSecret,
           });
+
+          const kioskData = deviceData?.kiosk ?? {};
 
           if (agentRegistry.has(deviceId)) {
             const previous = agentRegistry.getByDeviceId(deviceId);
@@ -121,10 +125,11 @@ export function registerAgentSocket(server) {
           agentRegistry.setAgent(deviceId, ws, {
             userAgent: "raspberry-agent",
             deviceId,
-            clubId: deviceData.clubId,
-            mode: deviceData.mode,
-            config: deviceData.config,
-            bootstrapToken: deviceData.bootstrapToken ?? null,
+            clubId: kioskData.clubId ?? null,
+            mode: kioskData.mode ?? null,
+            config: kioskData.config ?? {},
+            bootstrapToken: deviceData?.bootstrapToken ?? null,
+            bootstrapUrl: deviceData?.bootstrapUrl ?? null,
             authenticatedAt: new Date().toISOString(),
           });
 
@@ -134,12 +139,13 @@ export function registerAgentSocket(server) {
               message: "Agent authenticated successfully",
               data: {
                 deviceId,
-                clubId: deviceData.clubId,
-                mode: deviceData.mode,
-                config: deviceData.config,
-                bootstrapToken: deviceData.bootstrapToken ?? null,
+                clubId: kioskData.clubId ?? null,
+                mode: kioskData.mode ?? null,
+                config: kioskData.config ?? {},
+                bootstrapToken: deviceData?.bootstrapToken ?? null,
+                bootstrapUrl: deviceData?.bootstrapUrl ?? null,
               },
-            }),
+            })
           );
 
           return;
@@ -150,7 +156,7 @@ export function registerAgentSocket(server) {
             JSON.stringify({
               type: "auth_error",
               message: "Agent no autenticado",
-            }),
+            })
           );
           ws.close(4003, "Unauthorized");
           return;
@@ -173,8 +179,8 @@ export function registerAgentSocket(server) {
                   ? error
                   : error?.message || "Raspberry execution failed",
                 502,
-                typeof error === "string" ? { message: error } : error ?? null,
-              ),
+                typeof error === "string" ? { message: error } : error ?? null
+              )
             );
             return;
           }
@@ -182,13 +188,13 @@ export function registerAgentSocket(server) {
           pending.resolve(data ?? {});
         }
       } catch (error) {
-        console.error("Error procesando mensaje del agent:", error);
+        console.error("❌ Error procesando mensaje del agent:", error.message);
 
         ws.send(
           JSON.stringify({
             type: "auth_error",
             message: error.message || "Error autenticando dispositivo",
-          }),
+          })
         );
 
         ws.close(4002, "Authentication failed");
@@ -196,13 +202,19 @@ export function registerAgentSocket(server) {
     });
 
     ws.on("close", () => {
-      if (currentDeviceId && agentRegistry.getByDeviceId(currentDeviceId)?.socket === ws) {
+      if (
+        currentDeviceId &&
+        agentRegistry.getByDeviceId(currentDeviceId)?.socket === ws
+      ) {
         agentRegistry.remove(currentDeviceId);
       }
     });
 
     ws.on("error", () => {
-      if (currentDeviceId && agentRegistry.getByDeviceId(currentDeviceId)?.socket === ws) {
+      if (
+        currentDeviceId &&
+        agentRegistry.getByDeviceId(currentDeviceId)?.socket === ws
+      ) {
         agentRegistry.remove(currentDeviceId);
       }
     });
@@ -211,7 +223,7 @@ export function registerAgentSocket(server) {
       JSON.stringify({
         type: "connected",
         message: "WebSocket connected. Waiting for authentication.",
-      }),
+      })
     );
   });
 }
