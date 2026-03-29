@@ -1,4 +1,5 @@
 import { WebSocketServer } from "ws";
+import axios from "axios";
 import { agentRegistry } from "./agent.registry.js";
 import { pendingRequests } from "./pending-requests.js";
 import { AppError } from "../utils/app-error.js";
@@ -9,6 +10,25 @@ function safeJsonParse(raw) {
   } catch {
     return null;
   }
+}
+
+async function authenticateAgentWithBackend({ deviceId, deviceSecret }) {
+  const response = await axios.post(
+    `${process.env.BACKEND_URL}/api/kiosk-devices/activate`,
+    {
+      deviceId,
+      deviceSecret,
+    },
+    {
+      timeout: 10000,
+    },
+  );
+
+  if (!response?.data?.success) {
+    throw new Error("Backend rechazó la autenticación del dispositivo");
+  }
+
+  return response.data.data;
 }
 
 export function registerAgentSocket(server) {
@@ -28,18 +48,10 @@ export function registerAgentSocket(server) {
   });
 
   wss.on("connection", (ws) => {
-    if (agentRegistry.isConnected()) {
-      const previous = agentRegistry.getAgent();
-      try {
-        previous?.socket?.close();
-      } catch {}
-    }
+    let isAuthenticated = false;
+    let currentDeviceId = null;
 
-    agentRegistry.setAgent(ws, {
-      userAgent: "raspberry-agent",
-    });
-
-    ws.on("message", (rawMessage) => {
+    ws.on("message", async (rawMessage) => {
       console.log("Mensaje recibido del agente:", rawMessage.toString());
 
       const message = safeJsonParse(rawMessage.toString());
@@ -48,49 +60,129 @@ export function registerAgentSocket(server) {
         return;
       }
 
-      if (message.type === "command_result") {
-        const { requestId, data, error } = message;
-        const pending = pendingRequests.get(requestId);
+      try {
+        if (message.type === "agent_hello") {
+          const { deviceId, deviceSecret } = message;
 
-        if (!pending) {
-          return;
-        }
+          if (!deviceId || !deviceSecret) {
+            ws.send(
+              JSON.stringify({
+                type: "auth_error",
+                message: "Faltan deviceId o deviceSecret",
+              }),
+            );
+            ws.close(4000, "Missing credentials");
+            return;
+          }
 
-        pendingRequests.delete(requestId);
+          const deviceData = await authenticateAgentWithBackend({
+            deviceId,
+            deviceSecret,
+          });
 
-        if (error) {
-          pending.reject(
-            new AppError(
-              typeof error === "string"
-                ? error
-                : error?.message || "Raspberry execution failed",
-              502,
-              typeof error === "string" ? { message: error } : error ?? null,
-            ),
+          if (agentRegistry.has(deviceId)) {
+            const previous = agentRegistry.getByDeviceId(deviceId);
+            try {
+              previous?.socket?.close(4001, "Replaced by new agent connection");
+            } catch {}
+          }
+
+          currentDeviceId = deviceId;
+          isAuthenticated = true;
+
+          agentRegistry.setAgent(deviceId, ws, {
+            userAgent: "raspberry-agent",
+            deviceId,
+            clubId: deviceData.clubId,
+            mode: deviceData.mode,
+            config: deviceData.config,
+            bootstrapToken: deviceData.bootstrapToken ?? null,
+            authenticatedAt: new Date().toISOString(),
+          });
+
+          ws.send(
+            JSON.stringify({
+              type: "auth_ok",
+              message: "Agent authenticated successfully",
+              data: {
+                deviceId,
+                clubId: deviceData.clubId,
+                mode: deviceData.mode,
+                config: deviceData.config,
+                bootstrapToken: deviceData.bootstrapToken ?? null,
+              },
+            }),
           );
+
           return;
         }
 
-        pending.resolve(data ?? {});
+        if (!isAuthenticated) {
+          ws.send(
+            JSON.stringify({
+              type: "auth_error",
+              message: "Agent no autenticado",
+            }),
+          );
+          ws.close(4003, "Unauthorized");
+          return;
+        }
+
+        if (message.type === "command_result") {
+          const { requestId, data, error } = message;
+          const pending = pendingRequests.get(requestId);
+
+          if (!pending) {
+            return;
+          }
+
+          pendingRequests.delete(requestId);
+
+          if (error) {
+            pending.reject(
+              new AppError(
+                typeof error === "string"
+                  ? error
+                  : error?.message || "Raspberry execution failed",
+                502,
+                typeof error === "string" ? { message: error } : error ?? null,
+              ),
+            );
+            return;
+          }
+
+          pending.resolve(data ?? {});
+        }
+      } catch (error) {
+        console.error("Error procesando mensaje del agent:", error);
+
+        ws.send(
+          JSON.stringify({
+            type: "auth_error",
+            message: error.message || "Error autenticando dispositivo",
+          }),
+        );
+
+        ws.close(4002, "Authentication failed");
       }
     });
 
     ws.on("close", () => {
-      if (agentRegistry.getAgent()?.socket === ws) {
-        agentRegistry.clearAgent();
+      if (currentDeviceId && agentRegistry.getByDeviceId(currentDeviceId)?.socket === ws) {
+        agentRegistry.remove(currentDeviceId);
       }
     });
 
     ws.on("error", () => {
-      if (agentRegistry.getAgent()?.socket === ws) {
-        agentRegistry.clearAgent();
+      if (currentDeviceId && agentRegistry.getByDeviceId(currentDeviceId)?.socket === ws) {
+        agentRegistry.remove(currentDeviceId);
       }
     });
 
     ws.send(
       JSON.stringify({
         type: "connected",
-        message: "Agent connected successfully",
+        message: "WebSocket connected. Waiting for authentication.",
       }),
     );
   });
