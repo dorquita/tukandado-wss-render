@@ -13,22 +13,46 @@ function safeJsonParse(raw) {
 }
 
 async function authenticateAgentWithBackend({ deviceId, deviceSecret }) {
-  const response = await axios.post(
-    `${process.env.BACKEND_URL}/api/auth/kiosk/device-activate`,
-    {
-      deviceId,
-      deviceSecret,
-    },
-    {
-      timeout: 10000,
-    },
-  );
+  try {
+    console.log("🔐 Autenticando agent:", { deviceId });
 
-  if (!response?.data?.success) {
-    throw new Error("Backend rechazó la autenticación del dispositivo");
+    const url = `${process.env.BACKEND_URL}/api/auth/kiosk/device-activate`;
+    console.log("➡️ URL:", url);
+
+    const response = await axios.post(
+      url,
+      { deviceId, deviceSecret },
+      { timeout: 10000 }
+    );
+
+    console.log("✅ Response backend:", response.data);
+
+    if (!response?.data?.success) {
+      throw new Error(
+        `Backend respondió success=false: ${response?.data?.message}`
+      );
+    }
+
+    return response.data.data;
+
+  } catch (error) {
+    // 🔥 AQUÍ ESTÁ LA MAGIA
+
+    const status = error?.response?.status;
+    const data = error?.response?.data;
+    const message = error?.message;
+
+    console.error("❌ Error autenticando agent:");
+    console.error("Status:", status);
+    console.error("Backend response:", data);
+    console.error("Error message:", message);
+
+    throw new Error(
+      `Auth fallida (${status || "NO_STATUS"}): ${
+        data?.message || message
+      }`
+    );
   }
-
-  return response.data.data;
 }
 
 export function registerAgentSocket(server) {
