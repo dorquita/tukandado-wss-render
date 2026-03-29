@@ -12,7 +12,7 @@ function safeJsonParse(raw) {
   }
 }
 
-async function authenticateAgentWithBackend({ deviceId, deviceSecret }) {
+export async function authenticateAgentWithBackend({ deviceId, deviceSecret }) {
   try {
     console.log("🔐 Autenticando agent:", { deviceId });
 
@@ -25,26 +25,30 @@ async function authenticateAgentWithBackend({ deviceId, deviceSecret }) {
       { timeout: 10000 }
     );
 
+    // 🔍 Logs útiles
+    console.log("HTTP Status:", response.status);
     console.log("✅ Response backend:", response.data);
 
-    if (!response?.data?.success) {
+    const body = response.data;
+
+    // ✅ CAMBIO CLAVE: usar `ok` en lugar de `success`
+    if (!body?.ok) {
       throw new Error(
-        `Backend respondió success=false: ${response?.data?.message}`
+        `Backend respondió ok=false: ${body?.message || "Sin mensaje"}`
       );
     }
 
-    return response.data.data;
+    // 👉 Devuelves directamente los datos útiles
+    return body.data;
 
   } catch (error) {
-    // 🔥 AQUÍ ESTÁ LA MAGIA
-
     const status = error?.response?.status;
     const data = error?.response?.data;
     const message = error?.message;
 
     console.error("❌ Error autenticando agent:");
-    console.error("Status:", status);
-    console.error("Backend response:", data);
+    console.error("HTTP Status:", status);
+    console.error("Backend body:", data);
     console.error("Error message:", message);
 
     throw new Error(
