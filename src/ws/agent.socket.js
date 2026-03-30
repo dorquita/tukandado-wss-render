@@ -22,7 +22,7 @@ export async function authenticateAgentWithBackend({ deviceId, deviceSecret }) {
     const response = await axios.post(
       url,
       { deviceId, deviceSecret },
-      { timeout: 10000 }
+      { timeout: 10000 },
     );
 
     console.log("HTTP Status:", response.status);
@@ -31,7 +31,7 @@ export async function authenticateAgentWithBackend({ deviceId, deviceSecret }) {
 
     if (!body?.ok) {
       throw new Error(
-        `Backend respondió ok=false: ${body?.message || "Sin mensaje"}`
+        `Backend respondió ok=false: ${body?.message || "Sin mensaje"}`,
       );
     }
 
@@ -47,7 +47,7 @@ export async function authenticateAgentWithBackend({ deviceId, deviceSecret }) {
     console.error("Error message:", message);
 
     throw new Error(
-      `Auth fallida (${status || "NO_STATUS"}): ${data?.message || message}`
+      `Auth fallida (${status || "NO_STATUS"}): ${data?.message || message}`,
     );
   }
 }
@@ -99,7 +99,7 @@ export function registerAgentSocket(server) {
               JSON.stringify({
                 type: "auth_error",
                 message: "Faltan deviceId o deviceSecret",
-              })
+              }),
             );
             ws.close(4000, "Missing credentials");
             return;
@@ -133,6 +133,12 @@ export function registerAgentSocket(server) {
             authenticatedAt: new Date().toISOString(),
           });
 
+          console.log("✅ Agent registrado en registry:", {
+            deviceId,
+            clubId: kioskData.clubId ?? null,
+            mode: kioskData.mode ?? null,
+          });
+
           ws.send(
             JSON.stringify({
               type: "auth_ok",
@@ -145,7 +151,7 @@ export function registerAgentSocket(server) {
                 bootstrapToken: deviceData?.bootstrapToken ?? null,
                 bootstrapUrl: deviceData?.bootstrapUrl ?? null,
               },
-            })
+            }),
           );
 
           return;
@@ -156,7 +162,7 @@ export function registerAgentSocket(server) {
             JSON.stringify({
               type: "auth_error",
               message: "Agent no autenticado",
-            })
+            }),
           );
           ws.close(4003, "Unauthorized");
           return;
@@ -179,8 +185,10 @@ export function registerAgentSocket(server) {
                   ? error
                   : error?.message || "Raspberry execution failed",
                 502,
-                typeof error === "string" ? { message: error } : error ?? null
-              )
+                typeof error === "string"
+                  ? { message: error }
+                  : (error ?? null),
+              ),
             );
             return;
           }
@@ -194,7 +202,7 @@ export function registerAgentSocket(server) {
           JSON.stringify({
             type: "auth_error",
             message: error.message || "Error autenticando dispositivo",
-          })
+          }),
         );
 
         ws.close(4002, "Authentication failed");
@@ -223,7 +231,7 @@ export function registerAgentSocket(server) {
       JSON.stringify({
         type: "connected",
         message: "WebSocket connected. Waiting for authentication.",
-      })
+      }),
     );
   });
 }
