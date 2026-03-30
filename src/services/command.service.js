@@ -6,10 +6,22 @@ import { pendingRequests } from "../ws/pending-requests.js";
 
 export class CommandService {
   async sendCommand(type, payload = {}) {
-    const agent = agentRegistry.getAgent();
+    const { deviceId } = payload ?? {};
 
-    if (!agentRegistry.isConnected()) {
-      throw new AppError("Raspberry agent is not connected", 503);
+    if (!deviceId) {
+      throw new AppError(
+        "deviceId es requerido para enviar comandos al agent",
+        400,
+      );
+    }
+
+    const agent = agentRegistry.getByDeviceId(deviceId);
+
+    if (!agent || !agentRegistry.isConnected(deviceId)) {
+      throw new AppError(
+        `Raspberry agent no conectado para deviceId: ${deviceId}`,
+        503,
+      );
     }
 
     const requestId = createId("req");
@@ -55,8 +67,23 @@ export class CommandService {
     return result;
   }
 
-  async scanDevices() {
-    return await this.sendCommand("scan_devices", {});
+  async scanDevices({ deviceId }) {
+    if (!deviceId) {
+      throw new AppError("deviceId es requerido", 400);
+    }
+
+    return await this.sendCommand("scan_devices", { deviceId });
+  }
+
+  async scanLocks({ deviceId, clubId }) {
+    if (!deviceId) {
+      throw new AppError("deviceId es requerido", 400);
+    }
+
+    return await this.sendCommand("scan_locks", {
+      deviceId,
+      clubId,
+    });
   }
 
   async openTechnicalLock({
